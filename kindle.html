@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Remote — KasaMath Hub</title>
+<style>
+  :root{
+    --line:#000;
+    --dim:#666;
+    --paper:#fff;
+    --mono: ui-monospace, 'SF Mono', Consolas, monospace;
+    --serif: Georgia, 'Bookerly', 'Palatino', 'Times New Roman', serif;
+    --sans: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%; background:var(--paper); color:var(--line);
+    font-family:var(--sans); overflow:hidden;
+  }
+  #app{position:fixed; inset:0; display:flex; flex-direction:column;}
+
+  /* ---------- Top bar ---------- */
+  #bar{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:10px 12px; border-bottom:2px solid var(--line); flex-shrink:0;
+  }
+  #bar .label{font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.08em;}
+  #nowPlaying{
+    font-family:var(--serif); font-size:14px; flex:1; text-align:center;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 8px;
+  }
+  #openLessons, #gotoBtn{
+    font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em;
+    border:2px solid var(--line); background:var(--paper); padding:7px 10px; flex-shrink:0;
+  }
+  #openLessons:active, #gotoBtn:active{background:var(--line); color:var(--paper);}
+
+  /* ---------- Page-turn zones (mirrors Kindle's own tap-to-turn) ---------- */
+  #pad{flex:1; display:flex; flex-direction:column;}
+  .zone{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    border-bottom:2px solid var(--line); position:relative;
+  }
+  .zone:last-child{border-bottom:none;}
+  .zone .word{font-family:var(--serif); font-size:15vh; line-height:1; user-select:none;}
+  .zone .sub{
+    position:absolute; bottom:14px; left:0; right:0; text-align:center;
+    font-family:var(--mono); font-size:11px; letter-spacing:0.08em; color:var(--dim);
+  }
+  .zone.pressed{background:var(--line); color:var(--paper);}
+  .zone.pressed .sub{color:var(--paper);}
+  .zone.disabled{color:var(--dim);}
+  .zone.disabled .word{opacity:0.35;}
+
+  /* ---------- Status footer ---------- */
+  #footer{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 12px; border-top:2px solid var(--line); flex-shrink:0;
+    font-family:var(--mono); font-size:11px; color:var(--dim);
+  }
+  #slidePos{background:none; border:none; padding:0; color:var(--dim); font-family:var(--mono); font-size:11px;}
+  #slidePos b{color:var(--line);}
+  #slidePos.tappable{text-decoration:underline; -webkit-text-decoration-line:underline;}
+  #sentFlag{opacity:0;}
+  #sentFlag.show{opacity:1;}
+
+  /* ---------- Go-to-page overlay ---------- */
+  #gotoOverlay{
+    position:fixed; inset:0; background:var(--paper); z-index:25; display:none;
+    flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px;
+  }
+  #gotoOverlay.active{display:flex;}
+  #gotoLabel{font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--dim);}
+  #gotoInput{
+    width:100%; max-width:220px; border:2px solid var(--line); background:var(--paper); color:var(--line);
+    font-family:var(--serif); font-size:15vh; line-height:1; text-align:center; padding:8px 0;
+  }
+  #gotoRow{display:flex; gap:10px; width:100%; max-width:280px;}
+  #gotoGo, #gotoCancel{
+    flex:1; font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.06em;
+    border:2px solid var(--line); background:var(--paper); padding:12px 0;
+  }
+  #gotoGo:active, #gotoCancel:active{background:var(--line); color:var(--paper);}
+  #gotoHint{font-family:var(--mono); font-size:11px; color:var(--dim);}
+
+  /* ---------- Lesson picker overlay ---------- */
+  #overlay{
+    position:fixed; inset:0; background:var(--paper); z-index:20; display:none;
+    flex-direction:column;
+  }
+  #overlay.active{display:flex;}
+  #ovBar{
+    display:flex; align-items:center; gap:8px; padding:10px 12px;
+    border-bottom:2px solid var(--line); flex-shrink:0;
+  }
+  #ovClose{
+    font-family:var(--mono); font-size:11px; text-transform:uppercase;
+    border:2px solid var(--line); background:var(--paper); padding:7px 10px;
+  }
+  #ovClose:active{background:var(--line); color:var(--paper);}
+  #ovTermTabs{display:flex; gap:6px; padding:0 12px 10px; border-bottom:2px solid var(--line);}
+  .ov-term-tab{
+    flex:1; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:0.04em;
+    border:2px solid var(--line); background:var(--paper); color:var(--line); padding:8px 4px;
+  }
+  .ov-term-tab.active{background:var(--line); color:var(--paper);}
+  .ov-term-tab.failed{color:var(--dim); border-color:var(--dim);}
+  #ovSearch{
+    flex:1; border:2px solid var(--line); padding:8px 10px; font-size:14px;
+    font-family:var(--sans); background:var(--paper); color:var(--line);
+  }
+  #ovList{flex:1; overflow-y:auto; list-style:none; margin:0; padding:0;}
+  #ovList li{
+    padding:16px 12px; border-bottom:1px solid var(--line);
+    display:flex; gap:12px; align-items:baseline;
+  }
+  #ovList li .num{font-family:var(--mono); font-size:12px; min-width:48px; flex-shrink:0;}
+  #ovList li .t{font-family:var(--serif); font-size:16px; line-height:1.3;}
+  #ovList li.hidden{display:none;}
+  #ovStatus{padding:16px 12px; font-family:var(--mono); font-size:12px; color:var(--dim);}
+
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="bar">
+    <span class="label">Remote</span>
+    <div id="nowPlaying">No lesson selected</div>
+    <button id="gotoBtn">Page</button>
+    <button id="openLessons">Lessons</button>
+  </div>
+
+  <div id="pad">
+    <div class="zone disabled" id="zonePrev">
+      <div class="word">‹ Back</div>
+      <div class="sub">previous slide</div>
+    </div>
+    <div class="zone disabled" id="zoneNext">
+      <div class="word">Next ›</div>
+      <div class="sub">next slide</div>
+    </div>
+  </div>
+
+  <div id="footer">
+    <span id="slidePos">Slide <b>—</b> / —</span>
+    <span id="sentFlag">sent ✓</span>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="ovBar">
+    <button id="ovClose">Close</button>
+    <input id="ovSearch" type="text" placeholder="Search lessons…" autocomplete="off">
+  </div>
+  <div id="ovTermTabs"></div>
+  <div id="ovStatus">Loading lesson list…</div>
+  <ul id="ovList"></ul>
+</div>
+
+<div id="gotoOverlay">
+  <div id="gotoLabel">Go to slide</div>
+  <input id="gotoInput" type="number" inputmode="numeric" min="1" placeholder="—">
+  <div id="gotoHint"></div>
+  <div id="gotoRow">
+    <button id="gotoCancel">Cancel</button>
+    <button id="gotoGo">Go</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------------- CONFIG ----------------
+  const SHEET_ID  = '1M_8gqOK-OUJ2bPeMU0fgYfx5k9lJBFT9ZRA59tGoJ4c';
+  const TERMS = ['Term1', 'Term2', 'Term3'];  // must match your sheet tab names exactly
+
+  // Must match REMOTE_TOPIC in slide-viewer.html exactly.
+  const REMOTE_TOPIC = 'kasamath-g9-slides-9f3k2';
+  const MAX_SLIDES_TO_PROBE = 80;
+  // -----------------------------------------
+
+  function csvUrlForTerm(term){
+    return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(term)}`;
+  }
+  const el = (id) => document.getElementById(id);
+
+  const nowPlaying = el('nowPlaying'), slidePos = el('slidePos'), sentFlag = el('sentFlag');
+  const zonePrev = el('zonePrev'), zoneNext = el('zoneNext');
+  const overlay = el('overlay'), ovList = el('ovList'), ovStatus = el('ovStatus'), ovSearch = el('ovSearch');
+  const ovTermTabsEl = el('ovTermTabs');
+  const gotoOverlay = el('gotoOverlay'), gotoInput = el('gotoInput'), gotoHint = el('gotoHint');
+
+  let lessons = [];           // all terms combined
+  let termStatus = {};         // term -> 'ok' | 'failed'
+  let activeTerm = TERMS[0];
+  let session = { title: '', folderPath: '', total: 0, index: 0 }; // index is 0-based
+
+  // ---------- CSV parsing (same approach as slide-viewer.html) ----------
+  function parseCSV(text){
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++){
+      const c = text[i], next = text[i+1];
+      if (inQuotes){
+        if (c === '"' && next === '"'){ field += '"'; i++; }
+        else if (c === '"'){ inQuotes = false; }
+        else { field += c; }
+      } else {
+        if (c === '"'){ inQuotes = true; }
+        else if (c === ','){ row.push(field); field = ''; }
+        else if (c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+        else if (c === '\r'){ /* skip */ }
+        else { field += c; }
+      }
+    }
+    if (field.length || row.length){ row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(f => f.trim() !== ''));
+  }
+
+  function extractLessonNumber(title, folderPath){
+    let m = folderPath.match(/([0-9]+(?:\.[0-9]+)+)/);
+    if (m) return m[1];
+    m = title.match(/([0-9]+(?:\.[0-9]+)+)/);
+    return m ? m[1] : '';
+  }
+
+  function githubTreeToRawBase(treeUrl){
+    const m = treeUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+?)\/?$/);
+    if (!m) return null;
+    const [, owner, repo, branch, path] = m;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/`;
+  }
+
+  function loadImage(url){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(url);
+      img.onerror = () => reject(url);
+      img.src = url;
+    });
+  }
+
+  async function countSlides(folderPath){
+    const base = githubTreeToRawBase(folderPath);
+    if (!base) return 0;
+    let n = 0;
+    for (let i = 1; i <= MAX_SLIDES_TO_PROBE; i++){
+      const padded = String(i).padStart(2, '0');
+      try { await loadImage(`${base}slide-${padded}.png`); n = i; }
+      catch (e) { break; }
+    }
+    return n;
+  }
+
+  // ---------- Sheet ----------
+  async function loadSheet(){
+    ovStatus.textContent = 'Loading lesson list…';
+    renderTermTabs();
+
+    const results = await Promise.all(TERMS.map(async (term) => {
+      try {
+        const res = await fetch(csvUrlForTerm(term));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        const rows = parseCSV(text).slice(1);
+        const termLessons = rows
+          .map(r => ({ title: (r[0] || '').trim(), folderPath: (r[1] || '').trim() }))
+          .filter(l => l.title && l.folderPath)
+          .map(l => ({ ...l, term, number: extractLessonNumber(l.title, l.folderPath) }));
+        termStatus[term] = 'ok';
+        return termLessons;
+      } catch (err) {
+        termStatus[term] = 'failed';
+        return [];
+      }
+    }));
+
+    lessons = results.flat();
+    const anyOk = TERMS.some(t => termStatus[t] === 'ok');
+    ovStatus.textContent = anyOk ? '' : `Couldn't load any lesson tabs. Check sharing is set to "Anyone with the link."`;
+    renderTermTabs();
+    renderLessonList();
+  }
+
+  function renderTermTabs(){
+    ovTermTabsEl.innerHTML = '';
+    TERMS.forEach(term => {
+      const btn = document.createElement('div');
+      btn.className = 'ov-term-tab' + (term === activeTerm ? ' active' : '') + (termStatus[term] === 'failed' ? ' failed' : '');
+      btn.textContent = term;
+      btn.addEventListener('click', () => {
+        if (term === activeTerm) return;
+        activeTerm = term;
+        ovSearch.value = '';
+        renderTermTabs();
+        renderLessonList();
+      });
+      ovTermTabsEl.appendChild(btn);
+    });
+  }
+
+  function visibleLessons(){
+    return lessons.filter(l => l.term === activeTerm);
+  }
+
+  function renderLessonList(){
+    ovList.innerHTML = '';
+    const termLessons = visibleLessons();
+    if (!termLessons.length){
+      const msg = termStatus[activeTerm] === 'failed' ? `Couldn't load "${activeTerm}".` : `No lessons in "${activeTerm}".`;
+      ovList.innerHTML = `<li class="empty">${msg}</li>`;
+      return;
+    }
+    termLessons.forEach((lesson) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="num">${lesson.number || '—'}</span><span class="t">${escapeHtml(lesson.title)}</span>`;
+      li.addEventListener('click', () => selectLesson(lesson));
+      ovList.appendChild(li);
+    });
+  }
+
+  function escapeHtml(s){
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  ovSearch.addEventListener('input', () => {
+    const q = ovSearch.value.trim().toLowerCase();
+    const termLessons = visibleLessons();
+    Array.from(ovList.children).forEach((li, i) => {
+      const lesson = termLessons[i];
+      if (!lesson) return;
+      const match = !q || lesson.title.toLowerCase().includes(q) || lesson.number.includes(q);
+      li.classList.toggle('hidden', !match);
+    });
+  });
+
+  // ---------- Selecting a lesson ----------
+  async function selectLesson(lesson){
+    overlay.classList.remove('active');
+    session.title = lesson.title;
+    session.folderPath = lesson.folderPath;
+    session.index = 0;
+    session.total = 0;
+    nowPlaying.textContent = lesson.title;
+    updatePosLabel('counting…');
+    setZonesEnabled(false, true); // allow Next optimistically once command is sent
+
+    send({ action: 'open', title: lesson.title, folderPath: lesson.folderPath });
+
+    const total = await countSlides(lesson.folderPath);
+    session.total = total;
+    updatePosLabel();
+    setZonesEnabled(session.index > 0, total > 0 && session.index < total - 1);
+  }
+
+  function updatePosLabel(overrideText){
+    if (overrideText){
+      slidePos.innerHTML = overrideText;
+      return;
+    }
+    const cur = session.total ? session.index + 1 : '—';
+    const tot = session.total || '—';
+    slidePos.innerHTML = `Slide <b>${cur}</b> / ${tot}`;
+    slidePos.classList.toggle('tappable', !!session.folderPath);
+  }
+
+  function setZonesEnabled(prevOn, nextOn){
+    zonePrev.classList.toggle('disabled', !prevOn);
+    zoneNext.classList.toggle('disabled', !nextOn);
+  }
+
+  // ---------- Go to page ----------
+  function openGoto(){
+    if (!session.folderPath) return;
+    gotoHint.textContent = session.total ? `1 – ${session.total}` : 'slide count unknown yet';
+    gotoInput.value = session.total ? String(session.index + 1) : '';
+    gotoOverlay.classList.add('active');
+    setTimeout(() => gotoInput.focus(), 50);
+  }
+
+  function closeGoto(){
+    gotoOverlay.classList.remove('active');
+  }
+
+  function confirmGoto(){
+    let n = parseInt(gotoInput.value, 10);
+    if (!n || isNaN(n)) { closeGoto(); return; }
+    if (session.total) n = Math.max(1, Math.min(session.total, n));
+    else n = Math.max(1, n);
+    session.index = n - 1;
+    updatePosLabel();
+    setZonesEnabled(session.index > 0, !session.total || session.index < session.total - 1);
+    send({ action: 'goto', index: session.index });
+    flashSent();
+    closeGoto();
+  }
+
+  function flashSent(){
+    sentFlag.classList.add('show');
+    setTimeout(() => sentFlag.classList.remove('show'), 700);
+  }
+
+  // ---------- Navigation ----------
+  function goNext(){
+    if (!session.folderPath) return;
+    if (session.total && session.index >= session.total - 1) return;
+    session.index += 1;
+    updatePosLabel();
+    setZonesEnabled(session.index > 0, !session.total || session.index < session.total - 1);
+    send({ action: 'next' });
+    flashZone(zoneNext);
+  }
+
+  function goPrev(){
+    if (!session.folderPath) return;
+    if (session.index <= 0) return;
+    session.index -= 1;
+    updatePosLabel();
+    setZonesEnabled(session.index > 0, !session.total || session.index < session.total - 1);
+    send({ action: 'prev' });
+    flashZone(zonePrev);
+  }
+
+  function flashZone(zone){
+    zone.classList.add('pressed');
+    setTimeout(() => zone.classList.remove('pressed'), 150);
+  }
+
+  // ---------- Sending commands over ntfy.sh ----------
+  function send(cmd){
+    fetch(`https://ntfy.sh/${REMOTE_TOPIC}`, {
+      method: 'POST',
+      body: JSON.stringify(cmd)
+    }).then(() => {
+      flashSent();
+    }).catch(() => { /* Kindle wifi hiccup — user can just tap again */ });
+  }
+
+  // ---------- Events ----------
+  zonePrev.addEventListener('click', goPrev);
+  zoneNext.addEventListener('click', goNext);
+  el('openLessons').addEventListener('click', () => overlay.classList.add('active'));
+  el('ovClose').addEventListener('click', () => overlay.classList.remove('active'));
+  el('gotoBtn').addEventListener('click', openGoto);
+  slidePos.addEventListener('click', openGoto);
+  el('gotoCancel').addEventListener('click', closeGoto);
+  el('gotoGo').addEventListener('click', confirmGoto);
+  gotoInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') confirmGoto(); });
+
+  loadSheet();
+})();
+</script>
+</body>
+</html>
