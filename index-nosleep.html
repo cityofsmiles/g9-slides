@@ -586,52 +586,8 @@
     }
   }
 
-  // ---------- Keep the TV screen awake ----------
-  // Uses the Screen Wake Lock API where available (most modern TV browsers:
-  // WebOS, Tizen, Android TV/Chrome). Falls back to a silent looping video,
-  // a trick that works on older TV browsers that lack the Wake Lock API.
-  let wakeLock = null;
-
-  async function requestWakeLock(){
-    if ('wakeLock' in navigator){
-      try {
-        wakeLock = await navigator.wakeLock.request('screen');
-        wakeLock.addEventListener('release', () => { wakeLock = null; });
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
-    return false;
-  }
-
-  function startVideoFallback(){
-    if (document.getElementById('wakeVideo')) return;
-    const v = document.createElement('video');
-    v.id = 'wakeVideo';
-    v.setAttribute('playsinline', '');
-    v.muted = true;
-    v.loop = true;
-    v.style.cssText = 'position:fixed; width:1px; height:1px; opacity:0; pointer-events:none;';
-    // 1x1 transparent, silent, looping mp4 (tiny inline data URI)
-    v.src = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAtVtZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjAgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwAAAB0ZGF0YQ==';
-    document.body.appendChild(v);
-    v.play().catch(() => {});
-  }
-
-  function initWakeLock(){
-    requestWakeLock().then(ok => { if (!ok) startVideoFallback(); });
-  }
-
-  // Wake Lock is released automatically when the tab is hidden (e.g. app
-  // backgrounded); re-acquire it whenever the page becomes visible again.
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && !wakeLock) requestWakeLock();
-  });
-
   loadSheet();
   setupRemote();
-  initWakeLock();
 })();
 </script>
 </body>
