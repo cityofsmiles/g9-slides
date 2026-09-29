@@ -247,7 +247,6 @@
   let activeTerm = TERMS[0];
   let slideCache = {};        // folderPath -> [urls]
   let current = { urls: [], index: 0, title: '' };
-  let openToken = 0;          // increments on every lesson open / close
   let hudTimer = null;
 
   // ---------- CSV parsing (handles quoted fields) ----------
@@ -299,51 +298,23 @@
     });
   }
 
-  // Progressive probe: resolves as soon as slide 1 loads, then keeps discovering
-  // the rest in the background (a few at a time). entry.urls grows in place, so
-  // current.urls always sees new slides as they are found.
-  const PROBE_BATCH = 4;
-  function probeSlides(folderPath, onProgress){
-    let entry = slideCache[folderPath];
-    if (entry){
-      if (onProgress && !entry.done) entry.listeners.push(onProgress);
-      return entry.first;
-    }
+  async function probeSlides(folderPath){
+    if (slideCache[folderPath]) return slideCache[folderPath];
     const base = githubTreeToRawBase(folderPath);
-    if (!base) return Promise.reject(new Error('not-a-github-tree-url'));
-
-    entry = slideCache[folderPath] = { urls: [], done: false, listeners: onProgress ? [onProgress] : [] };
-    const urlFor = n => `${base}slide-${String(n).padStart(2, '0')}.png`;
-
-    entry.first = (async () => {
-      try { await loadImage(urlFor(1)); entry.urls.push(urlFor(1)); }
-      catch (e) { /* no slide 1: empty lesson */ }
-      if (!entry.urls.length){ entry.done = true; return entry; }
-      // continue in background (not awaited by the caller)
-      (async () => {
-        let n = 2;
-        while (n <= MAX_SLIDES_TO_PROBE){
-          const batch = [];
-          for (let k = n; k < n + PROBE_BATCH && k <= MAX_SLIDES_TO_PROBE; k++){
-            batch.push(loadImage(urlFor(k)).then(() => true, () => false));
-          }
-          const results = await Promise.all(batch);
-          let ended = false;
-          for (let i = 0; i < results.length; i++){
-            if (!results[i]){ ended = true; break; }  // first miss = end of sequence
-            entry.urls.push(urlFor(n + i));
-          }
-          entry.listeners.forEach(fn => { try { fn(entry); } catch (e) {} });
-          if (ended) break;
-          n += PROBE_BATCH;
-        }
-        entry.done = true;
-        entry.listeners.forEach(fn => { try { fn(entry); } catch (e) {} });
-        entry.listeners = [];
-      })();
-      return entry;
-    })();
-    return entry.first;
+    if (!base) throw new Error('not-a-github-tree-url');
+    const found = [];
+    for (let n = 1; n <= MAX_SLIDES_TO_PROBE; n++){
+      const padded = String(n).padStart(2, '0');
+      const url = `${base}slide-${padded}.png`;
+      try {
+        await loadImage(url);
+        found.push(url);
+      } catch (e) {
+        break; // first miss = end of sequence (matches the conversion script's numbering)
+      }
+    }
+    slideCache[folderPath] = found;
+    return found;
   }
 
   // ---------- Library rendering ----------
@@ -465,27 +436,23 @@
     emptyEl.classList.remove('active');
     slideImg.classList.add('hidden');
 
-    const myOpen = ++openToken;   // ignore late results if the user left / opened another lesson
-    let entry;
+    let urls;
     try {
-      entry = await probeSlides(lesson.folderPath, (en) => {
-        if (myOpen === openToken) totalNum.textContent = en.urls.length;
-      });
+      urls = await probeSlides(lesson.folderPath);
     } catch (e) {
-      entry = { urls: [] };
+      urls = [];
     }
-    if (myOpen !== openToken) return;
     loadingEl.classList.remove('active');
 
-    if (!entry.urls.length){
+    if (!urls.length){
       emptyDetail.textContent = lesson.folderPath;
       emptyEl.classList.add('active');
       return;
     }
 
-    current.urls = entry.urls;    // same array; grows as more slides are found
+    current.urls = urls;
     current.index = 0;
-    totalNum.textContent = entry.urls.length;
+    totalNum.textContent = urls.length;
     showSlide(0);
     attemptFullscreen();
     scheduleHudHide();
@@ -510,7 +477,6 @@
   function prevSlide(){ if (current.index > 0) showSlide(current.index - 1); wakeHud(); }
 
   function closeViewer(){
-    openToken++;   // cancel any pending UI update from an in-flight probe
     viewer.classList.remove('active');
     library.style.display = '';
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
