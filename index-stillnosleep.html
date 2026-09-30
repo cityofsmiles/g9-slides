@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Grade 7 Math Lessons</title>
+<title>Grade 9 Math Lessons</title>
 <style>
   :root{
     --ink:#121417;
@@ -54,13 +54,7 @@
     width:100%; background:var(--ink-2); border:1px solid var(--ink-3); color:var(--paper);
     padding:12px 14px; border-radius:8px; font-size:15px; margin-bottom:18px; font-family:var(--sans);
   }
-  /* Visible focus for D-pad navigation (LG remote) */
-  .row:focus, .term-tab:focus, #search:focus, .hud-btn:focus,
-  #status button:focus, #viewerEmpty button:focus{
-    outline:3px solid var(--chalk); outline-offset:3px;
-  }
-  .row:focus{outline-offset:-3px; background:var(--ink-2);}
-  .term-tab:hover{border-color:var(--chalk-dim);}
+  #search:focus{outline:none; border-color:var(--chalk-dim);}
   #search::placeholder{color:var(--paper-dim);}
 
   #status{
@@ -113,7 +107,6 @@
     opacity:1; transition:opacity 0.35s;
   }
   #hud.dim{opacity:0;}
-  #hud.dim .hud-top, #hud.dim .hud-bottom{pointer-events:none;}
   .hud-top{
     display:flex; align-items:center; justify-content:space-between; gap:12px;
     padding: max(16px, env(safe-area-inset-top)) 16px 24px;
@@ -166,40 +159,9 @@
   }
   #viewerEmpty.active{display:flex;}
   #viewerEmpty .big{color:var(--danger); font-size:14px; font-family:var(--mono);}
-  #viewerEmptyDetail{font-family:var(--mono); font-size:11px; word-break:break-all;}
   #viewerEmpty button{
     margin-top:8px; background:var(--ink-2); border:1px solid var(--ink-3); color:var(--paper);
     padding:9px 16px; border-radius:8px; font-family:var(--mono); font-size:12px; cursor:pointer;
-  }
-
-  /* ---------- TV scale (webOS browser reports ~1920px wide) ---------- */
-  @media (min-width: 1600px){
-    #library{padding:max(48px, env(safe-area-inset-top)) 96px 64px; align-items:center;}
-    #library > *{width:100%; max-width:1400px;}
-    .brand{margin-bottom:32px; padding-bottom:24px;}
-    .brand h1{font-size:44px;}
-    .brand small{font-size:24px;}
-    #termTabs{gap:12px; margin-bottom:24px;}
-    .term-tab{font-size:26px; padding:20px 12px; border-radius:12px;}
-    #search{font-size:28px; padding:22px 28px; border-radius:12px; margin-bottom:28px;}
-    #status{font-size:24px; gap:14px;}
-    #status button{font-size:22px; padding:12px 20px; border-radius:10px;}
-    .row{gap:28px; padding:28px 20px;}
-    .row .num{font-size:26px; min-width:120px;}
-    .row .title{font-size:32px;}
-    .row .go{font-size:36px;}
-    .empty{font-size:24px; padding:32px 8px;}
-    .hud-top{gap:20px; padding:max(32px, env(safe-area-inset-top)) 56px 40px;}
-    .hud-top .lesson-title{font-size:28px;}
-    .hud-btn{width:64px; height:64px; font-size:30px; border-radius:12px;}
-    .hud-bottom{padding:32px 56px max(32px, env(safe-area-inset-bottom));}
-    #counter{font-size:26px;}
-    #remoteDot{width:14px; height:14px;}
-    #loading{font-size:22px; gap:16px;}
-    .spinner{width:40px; height:40px; border-width:3px;}
-    #viewerEmpty .big{font-size:28px;}
-    #viewerEmptyDetail{font-size:20px;}
-    #viewerEmpty button{font-size:22px; padding:14px 26px;}
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -232,7 +194,7 @@
     <div id="loading"><div class="spinner"></div><div>finding slides…</div></div>
     <div id="viewerEmpty">
       <div class="big">No slides found in this folder</div>
-      <div id="viewerEmptyDetail"></div>
+      <div id="viewerEmptyDetail" style="font-family:var(--mono); font-size:11px;"></div>
       <button id="backFromEmpty">Back to list</button>
     </div>
 
@@ -257,15 +219,15 @@
 
   // ---------------- CONFIG ----------------
   // Edit these if you reuse this file for a different sheet or set of tabs.
-  const SHEET_ID  = '1M_8gqOK-OUJ2bPeMU0fgYfx5k9lJBFT9ZRA59tGoJ4c';
+  const SHEET_ID  = '1M_8gqOK-OUJ2bPeMU0fgYfx5k9lJBFT9ZRA59tGoJ4c';   
   const TERMS = ['Term1', 'Term2', 'Term3'];  // must match your sheet tab names exactly
-  const MAX_SLIDES_TO_PROBE = 250;  // safety ceiling per lesson
+  const MAX_SLIDES_TO_PROBE = 80;  // safety ceiling per lesson
   const HUD_HIDE_DELAY = 2600;     // ms of inactivity before HUD fades in viewer
 
   // Remote control (Kindle) — must match REMOTE_TOPIC in kindle-remote.html exactly.
   // ntfy.sh topics are unauthenticated and public if guessed, so pick something
   // obscure rather than leaving the default.
-  const REMOTE_TOPIC = 'kasamath-g7-slides-9f3k2';
+  const REMOTE_TOPIC = 'kasamath-g9-slides-9f3k2';
   const ENABLE_REMOTE = true;
   // -----------------------------------------
 
@@ -287,10 +249,6 @@
   let current = { urls: [], index: 0, title: '' };
   let openToken = 0;          // increments on every lesson open / close
   let hudTimer = null;
-  let libraryScroll = 0;      // restore list position after closing a lesson
-  let lastOpenedEl = null;    // row that opened the current lesson (for focus restore)
-  let viewerHistory = false;  // true while a history entry is pushed for the viewer
-  let lastInputWasKey = false;
 
   // ---------- CSV parsing (handles quoted fields) ----------
   function parseCSV(text){
@@ -395,16 +353,12 @@
       const btn = document.createElement('div');
       btn.className = 'term-tab' + (term === activeTerm ? ' active' : '') + (termStatus[term] === 'failed' ? ' failed' : '');
       btn.textContent = term;
-      btn.tabIndex = 0;
-      btn.setAttribute('role', 'tab');
       btn.addEventListener('click', () => {
         if (term === activeTerm) return;
-        const hadFocus = document.activeElement === btn;
         activeTerm = term;
         searchEl.value = '';
         renderTabs();
         renderList();
-        if (hadFocus) termTabsEl.children[TERMS.indexOf(term)].focus();
       });
       termTabsEl.appendChild(btn);
     });
@@ -429,9 +383,7 @@
       const li = document.createElement('li');
       li.className = 'row';
       li.innerHTML = `<span class="num">${lesson.number || '—'}</span><span class="title">${escapeHtml(lesson.title)}</span><span class="go">›</span>`;
-      li.tabIndex = 0;
-      li.setAttribute('role', 'button');
-      li.addEventListener('click', () => openLessonData(lesson, li));
+      li.addEventListener('click', () => openLessonData(lesson));
       listEl.appendChild(li);
     });
     countBadge.textContent = `${termLessons.length} lesson${termLessons.length === 1 ? '' : 's'}`;
@@ -503,19 +455,12 @@
   }
 
   // ---------- Viewer ----------
-  async function openLessonData(lesson, rowEl){
+  async function openLessonData(lesson){
     if (!lesson || !lesson.folderPath) return;
-    if (!viewer.classList.contains('active')){
-      libraryScroll = library.scrollTop;
-      lastOpenedEl = rowEl || null;
-    }
-    pushViewerState();
-    current.urls = []; current.index = 0;
     current.title = lesson.title;
     hudTitle.textContent = lesson.title;
     viewer.classList.add('active');
     library.style.display = 'none';
-    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     loadingEl.classList.add('active');
     emptyEl.classList.remove('active');
     slideImg.classList.add('hidden');
@@ -565,83 +510,24 @@
   function prevSlide(){ if (current.index > 0) showSlide(current.index - 1); wakeHud(); }
 
   function closeViewer(){
-    teardownViewer();
-    if (viewerHistory){
-      viewerHistory = false;
-      try { history.back(); } catch (e) {}
-    }
-  }
-
-  function teardownViewer(){
     openToken++;   // cancel any pending UI update from an in-flight probe
     viewer.classList.remove('active');
     library.style.display = '';
-    library.scrollTop = libraryScroll;
-    exitFullscreenSafe();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     clearTimeout(hudTimer);
-    restoreFocus();
-  }
-
-  // Keyboard/D-pad users land back on the lesson they opened. Fullscreen exit
-  // is asynchronous and the page is inert until it finishes, so retry then.
-  function restoreFocus(){
-    if (!(lastInputWasKey && lastOpenedEl && document.body.contains(lastOpenedEl))) return;
-    const target = lastOpenedEl;
-    const tryFocus = () => {
-      if (!viewer.classList.contains('active') && document.body.contains(target)) target.focus();
-    };
-    tryFocus();
-    if (document.activeElement === target) return;
-    let done = false;
-    const again = () => {
-      if (done) return;
-      done = true;
-      document.removeEventListener('fullscreenchange', again);
-      document.removeEventListener('webkitfullscreenchange', again);
-      tryFocus();
-    };
-    document.addEventListener('fullscreenchange', again);
-    document.addEventListener('webkitfullscreenchange', again);
-    setTimeout(again, 400);
-  }
-
-  // Back button support: the viewer gets its own history entry, so the
-  // TV's Back key closes the lesson instead of leaving the page.
-  function pushViewerState(){
-    if (viewerHistory) return;
-    try { history.pushState({ viewer: true }, ''); viewerHistory = true; } catch (e) {}
-  }
-
-  window.addEventListener('popstate', () => {
-    viewerHistory = false;
-    if (viewer.classList.contains('active')) teardownViewer();
-  });
-
-  function fsElement(){
-    return document.fullscreenElement || document.webkitFullscreenElement || null;
   }
 
   function attemptFullscreen(){
     const req = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
-    if (!req) return;
-    try {
-      const p = req.call(viewer);
-      if (p && typeof p.catch === 'function') p.catch(() => {});
-    } catch (e) {}
-  }
-
-  function exitFullscreenSafe(){
-    if (!fsElement()) return;
-    const ex = document.exitFullscreen || document.webkitExitFullscreen;
-    if (!ex) return;
-    try {
-      const p = ex.call(document);
-      if (p && typeof p.catch === 'function') p.catch(() => {});
-    } catch (e) {}
+    if (req) req.call(viewer).catch(() => {});
   }
 
   function toggleFullscreen(){
-    if (fsElement()) exitFullscreenSafe(); else attemptFullscreen();
+    if (document.fullscreenElement){
+      document.exitFullscreen().catch(() => {});
+    } else {
+      attemptFullscreen();
+    }
   }
 
   function wakeHud(){
@@ -657,106 +543,17 @@
   el('zoneLeft').addEventListener('click', prevSlide);
   el('zoneRight').addEventListener('click', nextSlide);
   el('btnClose').addEventListener('click', closeViewer);
-  el('btnFullscreen').addEventListener('click', (e) => {
-    toggleFullscreen();
-    e.currentTarget.blur();   // keep OK/Enter meaning "next slide"
-  });
+  el('btnFullscreen').addEventListener('click', toggleFullscreen);
   el('backFromEmpty').addEventListener('click', closeViewer);
   viewer.addEventListener('mousemove', wakeHud);
 
-  // ---------- LG remote: keys ----------
-  // keyCode is used (not e.key) because webOS remote keys have no e.key.
-  const K = {
-    ENTER: 13, ESC: 27, SPACE: 32, PGUP: 33, PGDN: 34,
-    LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, F: 70,
-    RW: 412, FF: 417, CHUP: 427, CHDN: 428, BACK: 461
-  };
-
-  document.addEventListener('mousedown', () => { lastInputWasKey = false; }, true);
-  document.addEventListener('touchstart', () => { lastInputWasKey = false; }, { capture: true, passive: true });
-
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    lastInputWasKey = true;
-    if (viewer.classList.contains('active')) handleViewerKey(e, e.keyCode);
-    else handleLibraryKey(e, e.keyCode);
+    if (!viewer.classList.contains('active')) return;
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+    else if (e.key === 'ArrowLeft') { prevSlide(); }
+    else if (e.key === 'Escape') { closeViewer(); }
+    else if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); }
   });
-
-  function handleViewerKey(e, k){
-    switch (k){
-      case K.RIGHT: case K.FF: case K.CHUP: case K.PGDN: case K.SPACE: case K.ENTER:
-        e.preventDefault(); nextSlide(); break;
-      case K.LEFT: case K.RW: case K.CHDN: case K.PGUP:
-        e.preventDefault(); prevSlide(); break;
-      case K.UP: case K.DOWN:
-        e.preventDefault(); wakeHud(); break;
-      case K.ESC: case K.BACK:
-        e.preventDefault(); closeViewer(); break;
-      case K.F:
-        toggleFullscreen(); break;
-    }
-  }
-
-  // D-pad navigation for the library. Order top to bottom:
-  // term tabs -> search -> (retry button) -> lesson rows.
-  function handleLibraryKey(e, k){
-    const a = document.activeElement;
-
-    // OK / Enter activates rows and tabs (divs don't do this natively).
-    if ((k === K.ENTER || k === K.SPACE) && a &&
-        (a.classList.contains('row') || a.classList.contains('term-tab'))){
-      e.preventDefault();
-      a.click();
-      return;
-    }
-
-    const isNav = k === K.UP || k === K.DOWN || k === K.LEFT || k === K.RIGHT;
-    if (!isNav) return;
-
-    // Left/Right inside the search box keep moving the text caret.
-    if (a === searchEl && (k === K.LEFT || k === K.RIGHT)) return;
-
-    const tabs = Array.from(termTabsEl.children);
-    const rows = Array.from(listEl.querySelectorAll('.row:not(.hidden)'));
-    const retry = el('retryBtn');
-
-    // First D-pad press with nothing focused: land on the first lesson.
-    if (!a || a === document.body || !library.contains(a)){
-      e.preventDefault();
-      (rows[0] || tabs[TERMS.indexOf(activeTerm)] || searchEl).focus();
-      return;
-    }
-
-    const tabIdx = tabs.indexOf(a);
-    const rowIdx = rows.indexOf(a);
-    let target = null;
-
-    if (k === K.LEFT || k === K.RIGHT){
-      if (tabIdx > -1) target = tabs[tabIdx + (k === K.RIGHT ? 1 : -1)];
-    } else if (tabIdx > -1){
-      if (k === K.DOWN) target = searchEl;
-    } else if (a === searchEl){
-      target = (k === K.UP) ? tabs[TERMS.indexOf(activeTerm)] : (retry || rows[0]);
-    } else if (a === retry){
-      target = (k === K.UP) ? searchEl : rows[0];
-    } else if (rowIdx > -1){
-      if (k === K.DOWN) target = rows[rowIdx + 1];
-      else target = rowIdx > 0 ? rows[rowIdx - 1] : (retry || searchEl);
-    }
-
-    e.preventDefault();
-    if (target) target.focus();
-  }
-
-  // Magic Remote scroll wheel flips slides in the viewer.
-  let lastWheel = 0;
-  viewer.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const now = Date.now();
-    if (now - lastWheel < 220 || Math.abs(e.deltaY) < 1) return;
-    lastWheel = now;
-    if (e.deltaY > 0) nextSlide(); else prevSlide();
-  }, { passive: false });
 
   // touch swipe
   let touchStartX = null, touchStartY = null;
@@ -824,149 +621,46 @@
   }
 
   // ---------- Keep the TV screen awake ----------
-  // LG webOS may release a Wake Lock while the page is still visible.
-  // We therefore:
-  //   1. request the Screen Wake Lock when supported;
-  //   2. immediately retry when the browser releases it;
-  //   3. periodically verify that it is still held;
-  //   4. use a muted looping video as a fallback where Wake Lock is unavailable;
-  //   5. retry after the page becomes visible again.
-  //
-  // NOTE: A web page cannot override LG's system-level Energy Saving,
-  // Screen Saver, or Auto Power Off settings. Those must be disabled in
-  // the TV settings if webOS still puts the display to sleep.
-
+  // Uses the Screen Wake Lock API where available (most modern TV browsers:
+  // WebOS, Tizen, Android TV/Chrome). Falls back to a silent looping video,
+  // a trick that works on older TV browsers that lack the Wake Lock API.
   let wakeLock = null;
-  let wakeLockRetryTimer = null;
-  let wakeLockWatchTimer = null;
-  let wakeLockRequestInProgress = false;
-
-  const WAKE_LOCK_RETRY_MS = 5000;
-  const WAKE_LOCK_WATCH_MS = 15000;
 
   async function requestWakeLock(){
-    if (wakeLockRequestInProgress) return !!wakeLock;
-    if (!('wakeLock' in navigator)) return false;
-
-    wakeLockRequestInProgress = true;
-
-    try {
-      // Don't request a second lock if the current one is still active.
-      if (wakeLock && !wakeLock.released) {
+    if ('wakeLock' in navigator){
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
         return true;
+      } catch (e) {
+        return false;
       }
-
-      wakeLock = await navigator.wakeLock.request('screen');
-
-      wakeLock.addEventListener('release', () => {
-        wakeLock = null;
-        scheduleWakeLockRetry();
-      }, { once: true });
-
-      return true;
-    } catch (e) {
-      wakeLock = null;
-      scheduleWakeLockRetry();
-      return false;
-    } finally {
-      wakeLockRequestInProgress = false;
     }
-  }
-
-  function scheduleWakeLockRetry(){
-    if (wakeLockRetryTimer) return;
-
-    wakeLockRetryTimer = setTimeout(async () => {
-      wakeLockRetryTimer = null;
-
-      if (document.visibilityState === 'visible') {
-        await requestWakeLock();
-      }
-    }, WAKE_LOCK_RETRY_MS);
+    return false;
   }
 
   function startVideoFallback(){
-    let v = document.getElementById('wakeVideo');
-
-    if (!v) {
-      v = document.createElement('video');
-      v.id = 'wakeVideo';
-      v.setAttribute('playsinline', '');
-      v.setAttribute('webkit-playsinline', '');
-      v.muted = true;
-      v.defaultMuted = true;
-      v.loop = true;
-      v.autoplay = true;
-      v.preload = 'auto';
-
-      // Keep it effectively invisible without using display:none.
-      v.style.cssText =
-        'position:fixed; left:-2px; top:-2px; width:2px; height:2px;' +
-        'opacity:0.01; pointer-events:none; z-index:-1;';
-
-      // 1x1 transparent, silent, looping MP4.
-      v.src =
-        'data:video/mp4;base64,' +
-        'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAtVtZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjAgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwAAAB0ZGF0YQ==';
-
-      document.body.appendChild(v);
-
-      v.addEventListener('ended', () => {
-        v.currentTime = 0;
-        v.play().catch(() => {});
-      });
-
-      v.addEventListener('pause', () => {
-        // Some TV browsers pause background/invisible media.
-        v.play().catch(() => {});
-      });
-    }
-
+    if (document.getElementById('wakeVideo')) return;
+    const v = document.createElement('video');
+    v.id = 'wakeVideo';
+    v.setAttribute('playsinline', '');
+    v.muted = true;
+    v.loop = true;
+    v.style.cssText = 'position:fixed; width:1px; height:1px; opacity:0; pointer-events:none;';
+    // 1x1 transparent, silent, looping mp4 (tiny inline data URI)
+    v.src = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAtVtZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjAgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwAAAB0ZGF0YQ==';
+    document.body.appendChild(v);
     v.play().catch(() => {});
-    return v;
   }
 
-  async function initWakeLock(){
-    // Always initialize the fallback as well. It is harmless when Wake Lock
-    // works and gives older webOS browsers another way to remain active.
-    startVideoFallback();
-
-    const ok = await requestWakeLock();
-
-    if (!ok) {
-      scheduleWakeLockRetry();
-    }
-
-    // Periodically check both mechanisms while the page remains visible.
-    if (!wakeLockWatchTimer) {
-      wakeLockWatchTimer = setInterval(() => {
-        if (document.visibilityState !== 'visible') return;
-
-        if (!wakeLock || wakeLock.released) {
-          requestWakeLock();
-        }
-
-        const v = document.getElementById('wakeVideo');
-        if (v && v.paused) {
-          v.play().catch(() => {});
-        }
-      }, WAKE_LOCK_WATCH_MS);
-    }
+  function initWakeLock(){
+    requestWakeLock().then(ok => { if (!ok) startVideoFallback(); });
   }
 
-  // Wake Lock is normally released when the page is hidden. Re-acquire it
-  // when webOS makes the page visible again.
+  // Wake Lock is released automatically when the tab is hidden (e.g. app
+  // backgrounded); re-acquire it whenever the page becomes visible again.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      startVideoFallback();
-      requestWakeLock();
-    }
-  });
-
-  // If the TV/browser suspends the page and later restores it, retry.
-  window.addEventListener('pageshow', () => {
-    startVideoFallback();
-    requestWakeLock();
+    if (document.visibilityState === 'visible' && !wakeLock) requestWakeLock();
   });
 
   loadSheet();
