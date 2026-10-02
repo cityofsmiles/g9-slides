@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Remote — KasaMath Hub</title>
 <style>
   :root{
@@ -15,35 +15,44 @@
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{
-    margin:0; padding:0; height:100%; background:var(--paper); color:var(--line);
+    margin:0; padding:0; width:100%; height:100%; background:var(--paper); color:var(--line);
     font-family:var(--sans); overflow:hidden;
   }
-  #app{position:fixed; inset:0; display:flex; flex-direction:column;}
+  /* Old Kindle WebKit: no `inset`, flaky flex/fixed height -> use plain absolute offsets */
+  #app{position:absolute; top:0; left:0; right:0; bottom:0; width:100%; height:100%;}
 
   /* ---------- Top bar ---------- */
   #bar{
-    display:flex; align-items:center; justify-content:space-between; gap:8px;
-    padding:10px 12px; border-bottom:2px solid var(--line); flex-shrink:0;
+    position:absolute; top:0; left:0; right:0; height:56px;
+    display:-webkit-box; display:-webkit-flex; display:flex;
+    -webkit-box-align:center; -webkit-align-items:center; align-items:center;
+    padding:0 12px; border-bottom:2px solid var(--line);
   }
+  #bar > *{margin-right:8px;}
+  #bar > *:last-child{margin-right:0;}
   #bar .label{font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.08em;}
   #nowPlaying{
-    font-family:var(--serif); font-size:14px; flex:1; text-align:center;
+    font-family:var(--serif); font-size:14px; -webkit-box-flex:1; -webkit-flex:1; flex:1; min-width:0; text-align:center;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 8px;
   }
   #openLessons, #gotoBtn{
     font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em;
-    border:2px solid var(--line); background:var(--paper); padding:7px 10px; flex-shrink:0;
+    border:2px solid var(--line); background:var(--paper); padding:7px 10px; -webkit-flex-shrink:0; flex-shrink:0;
   }
   #openLessons:active, #gotoBtn:active{background:var(--line); color:var(--paper);}
 
   /* ---------- Page-turn zones (mirrors Kindle's own tap-to-turn) ---------- */
-  #pad{flex:1; display:flex; flex-direction:column;}
+  #pad{position:absolute; top:56px; bottom:40px; left:0; right:0;}
   .zone{
-    flex:1; display:flex; align-items:center; justify-content:center;
-    border-bottom:2px solid var(--line); position:relative;
+    position:absolute; left:0; right:0; height:50%;
+    border-bottom:2px solid var(--line);
   }
-  .zone:last-child{border-bottom:none;}
-  .zone .word{font-family:var(--serif); font-size:15vh; line-height:1; user-select:none;}
+  #zonePrev{top:0;}
+  #zoneNext{top:50%; border-bottom:none;}
+  .zone .word{
+    position:absolute; left:0; right:0; top:50%; margin-top:-0.5em; text-align:center;
+    font-family:var(--serif); font-size:15vh; line-height:1; -webkit-user-select:none; user-select:none;
+  }
   .zone .sub{
     position:absolute; bottom:14px; left:0; right:0; text-align:center;
     font-family:var(--mono); font-size:11px; letter-spacing:0.08em; color:var(--dim);
@@ -55,10 +64,12 @@
 
   /* ---------- Status footer ---------- */
   #footer{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:8px 12px; border-top:2px solid var(--line); flex-shrink:0;
-    font-family:var(--mono); font-size:11px; color:var(--dim);
+    position:absolute; bottom:0; left:0; right:0; height:40px;
+    padding:0 12px; border-top:2px solid var(--line);
+    font-family:var(--mono); font-size:11px; color:var(--dim); line-height:38px;
   }
+  #slidePos{float:left;}
+  #sentFlag{float:right;}
   #slidePos{background:none; border:none; padding:0; color:var(--dim); font-family:var(--mono); font-size:11px;}
   #slidePos b{color:var(--line);}
   #slidePos.tappable{text-decoration:underline; -webkit-text-decoration-line:underline;}
@@ -67,18 +78,23 @@
 
   /* ---------- Go-to-page overlay ---------- */
   #gotoOverlay{
-    position:fixed; inset:0; background:var(--paper); z-index:25; display:none;
-    flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px;
+    position:absolute; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:var(--paper); z-index:25; display:none;
+    -webkit-box-orient:vertical; -webkit-box-direction:normal; -webkit-flex-direction:column; flex-direction:column;
+    -webkit-box-align:center; -webkit-align-items:center; align-items:center;
+    -webkit-box-pack:center; -webkit-justify-content:center; justify-content:center; padding:24px;
   }
-  #gotoOverlay.active{display:flex;}
+  #gotoOverlay.active{display:-webkit-box; display:-webkit-flex; display:flex;}
+  #gotoOverlay > *{margin-bottom:18px;}
+  #gotoOverlay > *:last-child{margin-bottom:0;}
   #gotoLabel{font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--dim);}
   #gotoInput{
     width:100%; max-width:220px; border:2px solid var(--line); background:var(--paper); color:var(--line);
     font-family:var(--serif); font-size:15vh; line-height:1; text-align:center; padding:8px 0;
   }
-  #gotoRow{display:flex; gap:10px; width:100%; max-width:280px;}
+  #gotoRow{display:-webkit-box; display:-webkit-flex; display:flex; width:100%; max-width:280px;}
+  #gotoRow button + button{margin-left:10px;}
   #gotoGo, #gotoCancel{
-    flex:1; font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.06em;
+    -webkit-box-flex:1; -webkit-flex:1; flex:1; font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.06em;
     border:2px solid var(--line); background:var(--paper); padding:12px 0;
   }
   #gotoGo:active, #gotoCancel:active{background:var(--line); color:var(--paper);}
@@ -86,39 +102,46 @@
 
   /* ---------- Lesson picker overlay ---------- */
   #overlay{
-    position:fixed; inset:0; background:var(--paper); z-index:20; display:none;
-    flex-direction:column;
+    position:absolute; top:0; left:0; right:0; bottom:0; width:100%; height:100%;
+    background:var(--paper); z-index:20; display:none;
   }
-  #overlay.active{display:flex;}
+  #overlay.active{display:block;}
   #ovBar{
-    display:flex; align-items:center; gap:8px; padding:10px 12px;
-    border-bottom:2px solid var(--line); flex-shrink:0;
+    position:absolute; top:0; left:0; right:0; height:56px; padding:9px 12px;
+    border-bottom:2px solid var(--line);
   }
+  #ovBar #ovClose{position:absolute; left:12px; top:9px;}
   #ovClose{
     font-family:var(--mono); font-size:11px; text-transform:uppercase;
     border:2px solid var(--line); background:var(--paper); padding:7px 10px;
   }
   #ovClose:active{background:var(--line); color:var(--paper);}
-  #ovTermTabs{display:flex; gap:6px; padding:0 12px 10px; border-bottom:2px solid var(--line);}
+  #ovTermTabs{
+    position:absolute; top:56px; left:0; right:0; height:52px; padding:8px 12px 0;
+    border-bottom:2px solid var(--line); display:-webkit-box; display:-webkit-flex; display:flex;
+  }
   .ov-term-tab{
-    flex:1; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:0.04em;
+    -webkit-box-flex:1; -webkit-flex:1; flex:1; margin-right:6px; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:0.04em;
     border:2px solid var(--line); background:var(--paper); color:var(--line); padding:8px 4px;
   }
+  .ov-term-tab:last-child{margin-right:0;}
   .ov-term-tab.active{background:var(--line); color:var(--paper);}
   .ov-term-tab.failed{color:var(--dim); border-color:var(--dim);}
   #ovSearch{
-    flex:1; border:2px solid var(--line); padding:8px 10px; font-size:14px;
+    position:absolute; left:90px; right:12px; top:9px; height:38px; width:auto;
+    border:2px solid var(--line); padding:8px 10px; font-size:14px;
     font-family:var(--sans); background:var(--paper); color:var(--line);
   }
-  #ovList{flex:1; overflow-y:auto; list-style:none; margin:0; padding:0;}
+  #ovList{position:absolute; top:108px; left:0; right:0; bottom:0; overflow-y:auto; -webkit-overflow-scrolling:touch; list-style:none; margin:0; padding:0;}
   #ovList li{
     padding:16px 12px; border-bottom:1px solid var(--line);
-    display:flex; gap:12px; align-items:baseline;
+    display:-webkit-box; display:-webkit-flex; display:flex;
   }
-  #ovList li .num{font-family:var(--mono); font-size:12px; min-width:48px; flex-shrink:0;}
+  #ovList li .num{margin-right:12px;}
+  #ovList li .num{font-family:var(--mono); font-size:12px; min-width:48px; -webkit-flex-shrink:0; flex-shrink:0;}
   #ovList li .t{font-family:var(--serif); font-size:16px; line-height:1.3;}
   #ovList li.hidden{display:none;}
-  #ovStatus{padding:16px 12px; font-family:var(--mono); font-size:12px; color:var(--dim);}
+  #ovStatus{position:absolute; top:108px; left:0; right:0; z-index:1; padding:16px 12px; font-family:var(--mono); font-size:12px; color:var(--dim);}
 
   @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
 </style>
@@ -452,6 +475,23 @@
   el('gotoCancel').addEventListener('click', closeGoto);
   el('gotoGo').addEventListener('click', confirmGoto);
   gotoInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') confirmGoto(); });
+
+  // Force the app to the real visible window size (Kindle browser mis-sizes 100%)
+  function fitScreen(){
+    var h = window.innerHeight || document.documentElement.clientHeight;
+    var w = window.innerWidth || document.documentElement.clientWidth;
+    ['app','overlay','gotoOverlay'].forEach(function(id){
+      var n = el(id);
+      n.style.height = h + 'px';
+      n.style.width = w + 'px';
+    });
+    document.documentElement.style.height = h + 'px';
+    document.body.style.height = h + 'px';
+  }
+  fitScreen();
+  window.addEventListener('resize', fitScreen);
+  window.addEventListener('orientationchange', function(){ setTimeout(fitScreen, 200); });
+  window.addEventListener('load', fitScreen);
 
   loadSheet();
 })();
