@@ -265,7 +265,7 @@
   // Remote control (Kindle) — must match REMOTE_TOPIC in kindle-remote.html exactly.
   // ntfy.sh topics are unauthenticated and public if guessed, so pick something
   // obscure rather than leaving the default.
-  const REMOTE_TOPIC = 'kasamath-g9-slides-9f3k2';
+  const REMOTE_TOPIC = 'kasamath-g7-slides-9f3k2';
   const ENABLE_REMOTE = true;
   // -----------------------------------------
 
@@ -283,6 +283,10 @@
   let lessons = [];          // all terms combined: {term, number, title, folderPath}
   let termStatus = {};        // term -> 'ok' | 'failed'
   let activeTerm = TERMS[0];
+  try {
+    const saved = localStorage.getItem('activeTerm');
+    if (saved && TERMS.includes(saved)) activeTerm = saved;
+  } catch (e) {}
   let slideCache = {};        // folderPath -> [urls]
   let current = { urls: [], index: 0, title: '' };
   let openToken = 0;          // increments on every lesson open / close
@@ -401,6 +405,7 @@
         if (term === activeTerm) return;
         const hadFocus = document.activeElement === btn;
         activeTerm = term;
+        try { localStorage.setItem('activeTerm', term); } catch (e) {}
         searchEl.value = '';
         renderTabs();
         renderList();
