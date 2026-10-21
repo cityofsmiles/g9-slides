@@ -56,7 +56,7 @@
   }
   /* Visible focus for D-pad navigation (LG remote) */
   .row:focus, .term-tab:focus, #search:focus, .hud-btn:focus,
-  #status button:focus, #viewerEmpty button:focus{
+  #status button:focus, #offlineBar button:focus, #viewerEmpty button:focus{
     outline:3px solid var(--chalk); outline-offset:3px;
   }
   .row:focus{outline-offset:-3px; background:var(--ink-2);}
@@ -73,6 +73,19 @@
     padding:5px 10px; font-family:var(--mono); font-size:11px; cursor:pointer; margin-left:6px;
   }
   #status button:hover{border-color:var(--chalk-dim); color:var(--chalk);}
+
+  #offlineBar{
+    font-family:var(--mono); font-size:11px; color:var(--paper-dim);
+    padding:0 0 14px; display:none; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  #offlineBar.show{display:flex;}
+  #offlineBar.ok #offlineText{color:var(--slate);}
+  #offlineBar.warn #offlineText{color:var(--danger);}
+  #offlineBar button{
+    background:none; border:1px solid var(--ink-3); color:var(--paper); border-radius:6px;
+    padding:5px 10px; font-family:var(--mono); font-size:11px; cursor:pointer;
+  }
+  #offlineBar button:hover{border-color:var(--chalk-dim); color:var(--chalk);}
 
   #list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px;}
   .row{
@@ -184,6 +197,8 @@
     #search{font-size:28px; padding:22px 28px; border-radius:12px; margin-bottom:28px;}
     #status{font-size:24px; gap:14px;}
     #status button{font-size:22px; padding:12px 20px; border-radius:10px;}
+    #offlineBar{font-size:22px; gap:14px; padding-bottom:20px;}
+    #offlineBar button{font-size:22px; padding:12px 20px; border-radius:10px;}
     .row{gap:28px; padding:28px 20px;}
     .row .num{font-size:26px; min-width:120px;}
     .row .title{font-size:32px;}
@@ -220,6 +235,7 @@
     <div id="termTabs"></div>
     <input id="search" type="text" placeholder="Search lessons…" autocomplete="off">
     <div id="status">Loading lesson list…</div>
+    <div id="offlineBar"><span id="offlineText"></span><button id="syncBtn" type="button" style="display:none"></button></div>
     <ul id="list"></ul>
   </div>
 
@@ -260,6 +276,7 @@
   const SHEET_ID  = '1M_8gqOK-OUJ2bPeMU0fgYfx5k9lJBFT9ZRA59tGoJ4c';
   const TERMS = ['Term1', 'Term2', 'Term3'];  // must match your sheet tab names exactly
   const MAX_SLIDES_TO_PROBE = 250;  // safety ceiling per lesson
+  const SLIDE_EXT = 'webp';  // slide file type: slide-01.<ext>
   const HUD_HIDE_DELAY = 2600;     // ms of inactivity before HUD fades in viewer
 
   // Remote control (Kindle) — must match REMOTE_TOPIC in kindle-remote.html exactly.
@@ -355,11 +372,18 @@
       if (onProgress && !entry.done) entry.listeners.push(onProgress);
       return entry.first;
     }
+    // Saved for offline: use the stored slide list, no probing needed.
+    const saved = manifest[folderPath];
+    if (saved && saved.complete && saved.urls.length){
+      entry = slideCache[folderPath] = { urls: saved.urls.slice(), done: true, listeners: [] };
+      entry.first = Promise.resolve(entry);
+      return entry.first;
+    }
     const base = githubTreeToRawBase(folderPath);
     if (!base) return Promise.reject(new Error('not-a-github-tree-url'));
 
     entry = slideCache[folderPath] = { urls: [], done: false, listeners: onProgress ? [onProgress] : [] };
-    const urlFor = n => `${base}slide-${String(n).padStart(2, '0')}.png`;
+    const urlFor = n => `${base}slide-${String(n).padStart(2, '0')}.${SLIDE_EXT}`;
 
     entry.first = (async () => {
       try { await loadImage(urlFor(1)); entry.urls.push(urlFor(1)); }
@@ -391,6 +415,186 @@
     })();
     return entry.first;
   }
+
+  // ---------- Offline support ----------
+  // Slides are saved in Cache Storage (not localStorage, which is ~5 MB).
+  // sw.js serves them back when the TV has no connection. The lesson list and
+  // each lesson's slide list are kept in localStorage (small JSON).
+  // Names are per-app (sheet id + folder) so two apps on the same site never mix data.
+  const NS = SHEET_ID.slice(0, 8);
+  const SCOPE = new URL('./', location.href).href;
+  const SLIDES_CACHE = 'slides-v1|' + SCOPE;   // must match sw.js
+  const MANIFEST_KEY = NS + ':slideManifest';
+  const LESSONS_KEY  = NS + ':lessonsCache';
+  const SYNC_CONCURRENCY = 4;              // lessons downloaded in parallel
+  const syncBtn = el('syncBtn');
+  const syncState = { running: false, done: 0, total: 0, failed: 0, error: '' };
+  let usageText = '';
+
+  function loadJSON(key){
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; }
+  }
+  function saveJSON(key, val){
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }
+  let manifest = loadJSON(MANIFEST_KEY) || {};   // folderPath -> { urls: [...], complete: true }
+
+  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+  function fetchWithTimeout(url, opts, ms){
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout')), ms);
+      fetch(url, opts).then(
+        r => { clearTimeout(t); resolve(r); },
+        e => { clearTimeout(t); reject(e); }
+      );
+    });
+  }
+
+  function offlineSupported(){
+    return !!(window.isSecureContext && 'caches' in window && 'serviceWorker' in navigator);
+  }
+
+  function registerSW(){
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  function requestPersistence(){
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  }
+
+  async function refreshUsage(){
+    try {
+      if (navigator.storage && navigator.storage.estimate){
+        const est = await navigator.storage.estimate();
+        if (est && est.usage) usageText = ` · ~${Math.round(est.usage / 1048576)} MB`;
+      }
+    } catch (e) {}
+  }
+
+  function uniqueFolders(filterFn){
+    const seen = {}, out = [];
+    lessons.forEach(l => {
+      if (!filterFn(l) || seen[l.folderPath] || !githubTreeToRawBase(l.folderPath)) return;
+      seen[l.folderPath] = true;
+      out.push(l.folderPath);
+    });
+    return out;
+  }
+
+  function renderOfflineBar(){
+    const bar = el('offlineBar'), txt = el('offlineText');
+    const folders = uniqueFolders(() => true);
+    const saved = folders.filter(fp => manifest[fp] && manifest[fp].complete);
+    const slides = saved.reduce((n, fp) => n + manifest[fp].urls.length, 0);
+    const online = navigator.onLine !== false;
+    let msg = '', cls = '', btn = '';
+
+    if (!folders.length){
+      msg = '';
+    } else if (!offlineSupported()){
+      msg = window.isSecureContext ? 'Offline mode isn’t supported by this browser.' : 'Offline mode needs HTTPS.';
+      cls = 'warn';
+    } else if (syncState.running){
+      msg = `Saving for offline… ${syncState.done}/${syncState.total} lessons · ${slides} slides`;
+    } else if (syncState.error){
+      msg = syncState.error; cls = 'warn'; btn = 'Retry';
+    } else if (saved.length === folders.length){
+      msg = `✓ Available offline · ${folders.length} lessons · ${slides} slides${usageText}`;
+      cls = 'ok'; btn = 'Re-download';
+    } else {
+      msg = `${saved.length}/${folders.length} lessons saved offline` + (syncState.failed ? ` · ${syncState.failed} failed` : '');
+      cls = syncState.failed ? 'warn' : ''; btn = 'Download';
+    }
+
+    txt.textContent = msg;
+    bar.className = (msg ? 'show ' : '') + cls;
+    if (btn && online){
+      syncBtn.textContent = btn;
+      syncBtn.dataset.force = (btn === 'Re-download') ? '1' : '';
+      syncBtn.style.display = '';
+    } else {
+      syncBtn.style.display = 'none';
+    }
+  }
+
+  // Fetch one slide and store it. Returns 'ok' or 'missing' (404 = end of lesson).
+  // Network errors / 5xx throw, so a dropped connection is never mistaken for the end.
+  async function fetchAndStore(url, cache, force){
+    if (!force){
+      const hit = await cache.match(url, { ignoreVary: true });
+      if (hit) return 'ok';
+    }
+    for (let attempt = 0; ; attempt++){
+      let res = null;
+      try {
+        res = await fetchWithTimeout(url, { mode: 'cors', credentials: 'omit', cache: force ? 'reload' : 'default' }, 20000);
+      } catch (e) {
+        if (attempt >= 2) throw e;
+      }
+      if (res){
+        if (res.status === 404) return 'missing';
+        if (res.ok){ await cache.put(url, res); return 'ok'; }
+        if (attempt >= 2) throw new Error('HTTP ' + res.status);
+      }
+      await sleep(800 * (attempt + 1));
+    }
+  }
+
+  async function downloadLesson(folderPath, cache, force){
+    const base = githubTreeToRawBase(folderPath);
+    const urls = [];
+    for (let n = 1; n <= MAX_SLIDES_TO_PROBE; n++){
+      const url = `${base}slide-${String(n).padStart(2, '0')}.${SLIDE_EXT}`;
+      const r = await fetchAndStore(url, cache, force);
+      if (r === 'missing') break;
+      urls.push(url);
+    }
+    if (urls.length){   // an empty folder is retried next launch
+      manifest[folderPath] = { urls: urls, complete: true };
+      saveJSON(MANIFEST_KEY, manifest);
+    }
+  }
+
+  async function syncAll(force){
+    if (syncState.running) return;
+    if (!offlineSupported() || navigator.onLine === false){ renderOfflineBar(); return; }
+
+    const folders = uniqueFolders(l => termStatus[l.term] === 'ok');
+    const pending = folders.filter(fp => force || !(manifest[fp] && manifest[fp].complete));
+    if (!pending.length){ await refreshUsage(); renderOfflineBar(); return; }
+
+    syncState.running = true; syncState.error = '';
+    syncState.done = 0; syncState.failed = 0; syncState.total = pending.length;
+    renderOfflineBar();
+
+    let cache;
+    try { cache = await caches.open(SLIDES_CACHE); }
+    catch (e) {
+      syncState.running = false; syncState.error = 'Storage unavailable in this browser.';
+      renderOfflineBar(); return;
+    }
+
+    const queue = pending.slice();
+    const worker = async () => {
+      while (queue.length && !syncState.error){
+        const fp = queue.shift();
+        try { await downloadLesson(fp, cache, force); }
+        catch (e) {
+          if (e && e.name === 'QuotaExceededError') syncState.error = 'Storage is full — free some space on the TV.';
+          else syncState.failed++;
+        }
+        syncState.done++;
+        renderOfflineBar();
+      }
+    };
+    await Promise.all(Array.from({ length: SYNC_CONCURRENCY }, worker));
+    syncState.running = false;
+    await refreshUsage();
+    renderOfflineBar();
+  }
+
+  syncBtn.addEventListener('click', () => syncAll(syncBtn.dataset.force === '1'));
 
   // ---------- Library rendering ----------
   function renderTabs(){
@@ -468,9 +672,11 @@
     statusEl.className = '';
     renderTabs();
 
+    let usedCache = false;
+    const savedLessons = loadJSON(LESSONS_KEY) || {};
     const results = await Promise.all(TERMS.map(async (term) => {
       try {
-        const res = await fetch(csvUrlForTerm(term));
+        const res = await fetchWithTimeout(csvUrlForTerm(term), {}, 10000);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const text = await res.text();
         const rows = parseCSV(text);
@@ -481,8 +687,15 @@
           .filter(l => l.title && l.folderPath)
           .map(l => ({ ...l, term, number: extractLessonNumber(l.title, l.folderPath) }));
         termStatus[term] = 'ok';
+        savedLessons[term] = termLessons;
+        saveJSON(LESSONS_KEY, savedLessons);
         return termLessons;
       } catch (err) {
+        if (savedLessons[term] && savedLessons[term].length){   // offline: use the saved list
+          termStatus[term] = 'cached';
+          usedCache = true;
+          return savedLessons[term];
+        }
         termStatus[term] = 'failed';
         return [];
       }
@@ -490,18 +703,18 @@
 
     lessons = results.flat();
     const anyFailed = TERMS.some(t => termStatus[t] === 'failed');
-    const anyOk = TERMS.some(t => termStatus[t] === 'ok');
+    const anyOk = TERMS.some(t => termStatus[t] === 'ok' || termStatus[t] === 'cached');
 
     if (!anyOk){
       statusEl.className = 'err';
       statusEl.innerHTML = `Couldn't load any lesson tabs. Make sure the sheet is shared as "Anyone with the link can view" and that tab names match ${TERMS.join(', ')}. <button id="retryBtn">Retry</button>`;
-      el('retryBtn').addEventListener('click', loadSheet);
+      el('retryBtn').addEventListener('click', () => { loadSheet().then(() => syncAll(false)); });
       renderTabs();
       renderList();
       return;
     }
 
-    statusEl.textContent = anyFailed ? `Some tabs failed to load (marked in red above).` : '';
+    statusEl.textContent = anyFailed ? `Some tabs failed to load (marked in red above).` : (usedCache ? 'Offline — showing saved lessons.' : '');
     statusEl.className = anyFailed ? 'err' : '';
     renderTabs();
     renderList();
@@ -723,7 +936,7 @@
 
     const tabs = Array.from(termTabsEl.children);
     const rows = Array.from(listEl.querySelectorAll('.row:not(.hidden)'));
-    const retry = el('retryBtn');
+    const extras = [el('retryBtn'), syncBtn].filter(b => b && b.offsetParent !== null);
 
     // First D-pad press with nothing focused: land on the first lesson.
     if (!a || a === document.body || !library.contains(a)){
@@ -741,12 +954,13 @@
     } else if (tabIdx > -1){
       if (k === K.DOWN) target = searchEl;
     } else if (a === searchEl){
-      target = (k === K.UP) ? tabs[TERMS.indexOf(activeTerm)] : (retry || rows[0]);
-    } else if (a === retry){
-      target = (k === K.UP) ? searchEl : rows[0];
+      target = (k === K.UP) ? tabs[TERMS.indexOf(activeTerm)] : (extras[0] || rows[0]);
+    } else if (extras.indexOf(a) > -1){
+      const xi = extras.indexOf(a);
+      target = (k === K.UP) ? (extras[xi - 1] || searchEl) : (extras[xi + 1] || rows[0]);
     } else if (rowIdx > -1){
       if (k === K.DOWN) target = rows[rowIdx + 1];
-      else target = rowIdx > 0 ? rows[rowIdx - 1] : (retry || searchEl);
+      else target = rowIdx > 0 ? rows[rowIdx - 1] : (extras[extras.length - 1] || searchEl);
     }
 
     e.preventDefault();
@@ -974,7 +1188,11 @@
     requestWakeLock();
   });
 
-  loadSheet();
+  registerSW();
+  requestPersistence();
+  loadSheet().then(() => syncAll(false));
+  window.addEventListener('online', () => { loadSheet().then(() => syncAll(false)); });
+  window.addEventListener('offline', renderOfflineBar);
   setupRemote();
   initWakeLock();
 })();
